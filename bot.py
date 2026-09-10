@@ -3,44 +3,79 @@ import telebot
 from telebot import types
 import os
 import requests
+import psycopg2
+from urllib.parse import urlparse
 
 # Получаем токены из переменных окружения Railway
 TOKEN = os.environ.get('BOT_TOKEN')
 TP_TOKEN = os.environ.get('TP_TOKEN')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 bot = telebot.TeleBot(TOKEN)
 
-# Функция для перевода названия города (например, Москва) в IATA-код (MOW)
+# --- ФУНКЦИЯ ДЛЯ СОХРАНЕНИЯ ПОЛЬЗОВАТЕЛЯ В SUPABASE ---
+def save_user_to_db(chat_id, username, first_name):
+    if not DATABASE_URL:
+        return
+    try:
+        url = urlparse(DATABASE_URL)
+        conn = psycopg2.connect(
+            database=url.path[1:],
+            user=url.username,
+            password=url.password,
+            host=url.hostname,
+            port=url.port
+        )
+        cursor = conn.cursor()
+        
+        # Сохраняем пользователя или пропускаем, если chat_id уже существует
+        cursor.execute(
+            """
+            INSERT INTO users (chat_id, username, first_name) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (chat_id) DO NOTHING;
+            """,
+            (chat_id, username, first_name)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка сохранения в базу данных: {e}")
+# --------------------------------------------------------
+
+# Функция для перевода названия города в IATA-код
 def get_iata_code(city_name):
     try:
         url = f"http://autocomplete.travelpayouts.com/places2?term={city_name}&locale=ru&types[]=city"
         response = requests.get(url)
         data = response.json()
-        
         if data:
             return data[0]['code']
     except Exception:
         return None
     return None
 
-# Функция для перевода IATA-кода (MOW) обратно в название города (Москва)
+# Функция для перевода IATA-кода обратно в название города
 def get_city_name(iata_code):
     try:
         url = f"http://autocomplete.travelpayouts.com/places2?term={iata_code}&locale=ru"
         response = requests.get(url)
         data = response.json()
         if data:
-            # Ищем точное совпадение по коду или берем первое название
             for place in data:
                 if place.get('code') == iata_code:
                     return place.get('name')
             return data[0].get('name', iata_code)
     except Exception:
-        return iata_code # Если произошла ошибка, возвращаем просто код
+        return iata_code
     return iata_code
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
+    # Сохраняем пользователя в облачную базу
+    save_user_to_db(message.chat.id, message.from_user.username, message.from_user.first_name)
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("🔥 Горящие туры")
     btn2 = types.KeyboardButton("✈️ Авиабилеты")
@@ -55,10 +90,8 @@ def start_message(message):
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     if message.text == "🔥 Горящие туры":
-        # Создаем клавиатуру в 2 столбца для туров
         inline_markup = types.InlineKeyboardMarkup(row_width=2)
         
-        # Ваши сгенерированные партнерские ссылки Travelata
         btn_thailand = types.InlineKeyboardButton("🇹🇭 Таиланд", url="https://travelata.tpk.ro/cpWK1dYQ")
         btn_turkey = types.InlineKeyboardButton("🇹🇷 Турция", url="https://travelata.tpk.ro/GhxyG6te")
         btn_vietnam = types.InlineKeyboardButton("🇻🇳 Вьетнам", url="https://travelata.tpk.ro/g6CALGk1")
@@ -84,7 +117,6 @@ def handle_text(message):
         )
         
     elif message.text == "✈️ Авиабилеты":
-        # Спрашиваем город и ждем ответа
         msg = bot.send_message(
             message.chat.id, 
             "Откуда вы летите? 🛫\n\nНапишите название города (например, Москва, Томск или Казань):"
@@ -94,9 +126,7 @@ def handle_text(message):
     else:
         bot.send_message(message.chat.id, "Пожалуйста, используйте кнопки меню внизу экрана.")
 
-# Функция, которая запускается после того, как пользователь введет город
 def process_flight_search(message):
-    # Если пользователь передумал и нажал кнопку меню
     if message.text in ["🔥 Горящие туры", "✈️ Авиабилеты"]:
         handle_text(message)
         return
@@ -115,7 +145,6 @@ def process_flight_search(message):
     bot.send_message(message.chat.id, f"Ищу дешевые билеты из г. {city_name} (код {iata_code})... ⏳")
     
     try:
-        # Запрос к API Travelpayouts
         url = "https://api.travelpayouts.com/v2/prices/latest"
         headers = {'x-access-token': TP_TOKEN}
         params = {
@@ -131,18 +160,14 @@ def process_flight_search(message):
         if data.get('success') and data.get('data'):
             tickets = data['data']
             for ticket in tickets:
-                # Переводим коды в нормальные названия
                 origin_name = get_city_name(ticket['origin'])
                 dest_name = get_city_name(ticket['destination'])
                 
-                # Преобразуем дату для ссылки Авиасейлс
                 date_parts = ticket['depart_date'].split('-')
                 day_month = date_parts[2] + date_parts[1]
                 
-                # Формируем партнерскую ссылку с вашим маркером 59114
                 affiliate_link = f"https://aviasales.ru/search/{ticket['origin']}{day_month}{ticket['destination']}1?marker=59114"
                 
-                # Создаем кнопку для покупки билета
                 ticket_markup = types.InlineKeyboardMarkup()
                 btn_buy = types.InlineKeyboardButton("✈️ Посмотреть билеты", url=affiliate_link)
                 ticket_markup.add(btn_buy)
