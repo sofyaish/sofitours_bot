@@ -62,22 +62,34 @@ def handle_text(message):
             bot.send_message(message.chat.id, "Произошла ошибка при обращении к серверу билетов.")
             
     elif message.text == "🔥 Горящие туры":
-        bot.send_message(message.chat.id, "Ищу самые свежие горящие туры... ⏳")
+        # Создаем клавиатуру в 2 столбца для красоты
+        inline_markup = types.InlineKeyboardMarkup(row_width=2)
         
-        try:
-            # ВНИМАНИЕ: Для туров URL будет зависеть от того, какую партнерку вы подключили (Level.Travel или Travelata)
-            # Это шаблон запроса, который нужно будет адаптировать под их документацию
-            url = "https://example.com/api/tours/hot" 
-            headers = {'Authorization': f'Bearer {TP_TOKEN}'}
-            
-            # response = requests.get(url, headers=headers)
-            bot.send_message(message.chat.id, "Чтобы туры заработали, нужно вписать правильный URL от партнерки туров в код бота!")
-                 
-        except Exception as e:
-            bot.send_message(message.chat.id, "Произошла ошибка при загрузке туров.")
-            
-    else:
-        bot.send_message(message.chat.id, "Пожалуйста, используйте кнопки меню внизу экрана.")
+        # Все ваши готовые партнерские ссылки
+        btn_thailand = types.InlineKeyboardButton("Таиланд", url="https://travelata.tpk.ro/cpWK1dYQ")
+        btn_turkey = types.InlineKeyboardButton("Турция", url="https://travelata.tpk.ro/GhxyG6te")
+        btn_vietnam = types.InlineKeyboardButton("Вьетнам", url="https://travelata.tpk.ro/g6CALGk1")
+        btn_tunisia = types.InlineKeyboardButton("Тунис", url="https://travelata.tpk.ro/VR7pcw6Y")
+        btn_egypt = types.InlineKeyboardButton("Египет", url="https://travelata.tpk.ro/8wm6Mjph")
+        btn_india = types.InlineKeyboardButton("Индия", url="https://travelata.tpk.ro/BjrZ9y0k")
+        btn_uae = types.InlineKeyboardButton("ОАЭ", url="https://travelata.tpk.ro/MnQp9ERC")
+        btn_maldives = types.InlineKeyboardButton("Мальдивы", url="https://travelata.tpk.ro/DJGw3rpf")
+        btn_russia = types.InlineKeyboardButton("Россия", url="https://travelata.tpk.ro/AoSBnh7u")
+        
+        # Добавляем все кнопки в меню
+        inline_markup.add(
+            btn_thailand, btn_turkey, 
+            btn_vietnam, btn_tunisia, 
+            btn_egypt, btn_india, 
+            btn_uae, btn_maldives, 
+            btn_russia
+        )
+        
+        bot.send_message(
+            message.chat.id, 
+            "Я подготовила для вас подборки лучших предложений! 🌴\n\nВыберите страну, чтобы посмотреть актуальные цены и забронировать тур:", 
+            reply_markup=inline_markup
+        )
 
 if __name__ == '__main__':
     print("Бот SofiTours успешно запущен!")
