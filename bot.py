@@ -23,6 +23,22 @@ def get_iata_code(city_name):
         return None
     return None
 
+# Функция для перевода IATA-кода (MOW) обратно в название города (Москва)
+def get_city_name(iata_code):
+    try:
+        url = f"http://autocomplete.travelpayouts.com/places2?term={iata_code}&locale=ru"
+        response = requests.get(url)
+        data = response.json()
+        if data:
+            # Ищем точное совпадение по коду или берем первое название
+            for place in data:
+                if place.get('code') == iata_code:
+                    return place.get('name')
+            return data[0].get('name', iata_code)
+    except Exception:
+        return iata_code # Если произошла ошибка, возвращаем просто код
+    return iata_code
+
 @bot.message_handler(commands=['start'])
 def start_message(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -115,6 +131,10 @@ def process_flight_search(message):
         if data.get('success') and data.get('data'):
             tickets = data['data']
             for ticket in tickets:
+                # Переводим коды в нормальные названия
+                origin_name = get_city_name(ticket['origin'])
+                dest_name = get_city_name(ticket['destination'])
+                
                 # Преобразуем дату для ссылки Авиасейлс
                 date_parts = ticket['depart_date'].split('-')
                 day_month = date_parts[2] + date_parts[1]
@@ -128,7 +148,7 @@ def process_flight_search(message):
                 ticket_markup.add(btn_buy)
                 
                 text = (
-                    f"✈️ *Направление: {ticket['origin']} ➔ {ticket['destination']}*\n"
+                    f"✈️ *Направление: {origin_name} ({ticket['origin']}) ➔ {dest_name} ({ticket['destination']})*\n"
                     f"💰 Цена: от {ticket['value']} руб.\n"
                     f"📅 Вылет: {ticket['depart_date']}"
                 )
